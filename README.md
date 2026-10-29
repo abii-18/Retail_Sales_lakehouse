@@ -2,7 +2,7 @@
 
 Architecture Diagram:
 
-![Retail Sales Lakehouse Architecture](Architecture.png)
+![Retail Sales Lakehouse animated architecture](docs/images/retail-lakehouse-architecture-animated.gif)
 
 ## Pipeline Flow
 
