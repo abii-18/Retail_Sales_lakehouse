@@ -56,6 +56,7 @@ silver_order_items_path = f"{silver_root_path}/order_items/batch_date={batch_dat
 silver_payments_path = f"{silver_root_path}/payments/batch_date={batch_date}"
 reject_customers_path = f"{reject_root_path}/customers/batch_date={batch_date}"
 reject_orders_path = f"{reject_root_path}/orders/batch_date={batch_date}"
+reject_order_items_path = f"{reject_root_path}/order_items/batch_date={batch_date}"
 fx_rates_path = f"{raw_root_path}/currency/batch_date={batch_date}/fx_rates.csv"
 
 print(f"Batch Date            : {batch_date}")
@@ -290,6 +291,14 @@ stores_df.show(10, truncate=False)
 
 # Order Items Cleansing
 order_items_df = deduplicate(order_items_df, "order_item_id")
+# Known rejected parents cascade to quarantine. Unknown parents remain visible to dbt tests.
+rejected_order_ids = reject_orders_df.select("order_id").filter(
+    F.col("order_id").isNotNull()
+).distinct()
+reject_order_items_df = order_items_df.join(
+    rejected_order_ids, "order_id", "left_semi"
+).withColumn("reject_reason", F.lit("Rejected Parent Order"))
+order_items_df = order_items_df.join(rejected_order_ids, "order_id", "left_anti")
 print(f"Silver Order Items : {order_items_df.count()}")
 
 order_items_df.show(10, truncate=False)
@@ -334,6 +343,7 @@ print("Silver Customers written successfully.")
 
 reject_customers_df.write.mode("overwrite").parquet(reject_customers_path)
 reject_orders_df.write.mode("overwrite").parquet(reject_orders_path)
+reject_order_items_df.write.mode("overwrite").parquet(reject_order_items_path)
 
 print("Rejected Customers written successfully.")
 
