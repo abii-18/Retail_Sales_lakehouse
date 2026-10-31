@@ -11,7 +11,10 @@ from pyspark.sql.window import Window
 
 def deduplicate(df, key_column):
     window_spec = Window.partitionBy(key_column).orderBy(
-        F.col("ingestion_timestamp").desc()
+        F.col("ingestion_timestamp").desc_nulls_last(),
+        F.col("source_file").desc_nulls_last(),
+        # Stable content order resolves different rows sharing timestamp and source.
+        F.to_json(F.struct(*[F.col(c) for c in sorted(df.columns)])).desc(),
     )
 
     return (
@@ -142,16 +145,8 @@ payments_df.show(5, truncate=False)
 bronze_count = orders_df.count()
 print(f"Bronze Row Count : {bronze_count}")
 
-# Deduplicate records
-window_spec = Window.partitionBy("order_id").orderBy(
-    F.col("ingestion_timestamp").desc()
-)
-
-orders_df = (
-    orders_df.withColumn("row_num", F.row_number().over(window_spec))
-    .filter(F.col("row_num") == 1)
-    .drop("row_num")
-)
+# Deduplicate records using the same deterministic order as other entities.
+orders_df = deduplicate(orders_df, "order_id")
 
 silver_count = orders_df.count()
 
