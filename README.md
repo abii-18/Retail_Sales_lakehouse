@@ -32,7 +32,7 @@ erDiagram
     dim_date ||--o{ fact_sales : date_key
 ```
 
-See [core models](dbt/retail_sales_lakehouse/models/core/). Customer/product/store keys reuse source IDs; the date key is the order date. Gold marts aggregate sales, customer and product analytics.
+See [core models](dbt/retail_sales_lakehouse/models/core/). Customer/product/store keys are deterministic MD5 surrogate keys, namespaced by entity and derived from source IDs; the date key is the order date. Gold marts aggregate sales, customer and product analytics.
 
 ## Data quality
 
@@ -40,9 +40,9 @@ See [core models](dbt/retail_sales_lakehouse/models/core/). Customer/product/sto
 |---|---|
 | Raw files missing, empty or malformed; missing required order columns | Validation task fails; missing orders batches may be skipped. |
 | Duplicate entity IDs | Silver window dedup keeps the latest ingestion; timestamp ties have no deterministic tie-breaker. |
-| Mandatory order fields or lineage fields are null | Rows are dropped; counts are logged, with no reject dataset. |
-| Customer email fails the regex | Parquet at `REJECT_ROOT_PATH/customers`, with `reject_reason = "Invalid Email"`; overwritten each run. Null emails enter neither valid nor reject output. |
-| dbt model checks | [schema.yml](dbt/retail_sales_lakehouse/models/core/schema.yml) tests dimension keys and `order_item_id` for uniqueness/non-nullness, plus customer/product/store fact relationships. Failures stop the final task; rows are not quarantined. |
+| Mandatory order fields or lineage fields are null | Parquet at `REJECT_ROOT_PATH/orders/batch_date=YYYY-MM-DD`, with `Null Mandatory Order Field`; counts are logged. |
+| Customer email fails the regex | Parquet at `REJECT_ROOT_PATH/customers/batch_date=YYYY-MM-DD`, with `Invalid Email` or `Null Email`; reruns replace only that batch. |
+| dbt model checks | [schema.yml](dbt/retail_sales_lakehouse/models/core/schema.yml) tests dimension keys and `order_item_id` for uniqueness/non-nullness, plus non-null customer/product/store fact keys and their relationships. SQL tests check order-item coverage and missing parent orders. Failures stop the final task; rows are not quarantined. |
 
 ## Screenshots
 
@@ -67,6 +67,6 @@ See [core models](dbt/retail_sales_lakehouse/models/core/). Customer/product/sto
 
 - Watermarks use order time rather than update time: late/backdated orders and updates to older orders can be missed. Advancing before downstream success leaves a recovery gap.
 - Extraction/landing use wall-clock dates while downstream tasks use Airflow's logical date. Historical backfills need manual alignment.
-- Silver scans Bronze history; full extracts and table rebuilds favor simplicity over scale. The warehouse loader currently uploads only the first Parquet file per dataset, so multi-file outputs can lose rows.
-- Reject history is overwritten, missing FX matches remain null, and fact inner joins can omit sales with missing dimensions. FX is enriched in Silver; fact amounts remain in source currency.
+- Silver scans Bronze history; full extracts and table rebuilds favor simplicity over scale. The warehouse loader paginates S3 listings and uploads every Parquet part.
+- Rejects are retained per batch; reruns overwrite that batch. Missing FX matches remain null. Fact left joins retain items with missing orders/dimensions, and dbt tests fail on missing references. FX is enriched in Silver; fact amounts remain in source currency.
 - FX API failures fall back to cached rates with a `DEGRADED` status. Cloud provisioning, sample data and credential/profile setup remain manual.

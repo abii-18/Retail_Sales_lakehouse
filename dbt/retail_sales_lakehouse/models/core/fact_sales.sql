@@ -53,14 +53,14 @@ select
 
 from latest_order_items oi
 
-join latest_orders o
+left join latest_orders o
     on oi.order_id = o.order_id
 
-join {{ ref('dim_customer') }} c
+left join {{ ref('dim_customer') }} c
     on o.customer_id = c.customer_id
 
-join {{ ref('dim_product') }} p
+left join {{ ref('dim_product') }} p
     on oi.product_id = p.product_id
 
-join {{ ref('dim_store') }} s
+left join {{ ref('dim_store') }} s
     on o.store_id = s.store_id

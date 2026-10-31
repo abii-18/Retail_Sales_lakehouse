@@ -54,7 +54,8 @@ silver_products_path = f"{silver_root_path}/products/batch_date={batch_date}"
 silver_stores_path = f"{silver_root_path}/stores/batch_date={batch_date}"
 silver_order_items_path = f"{silver_root_path}/order_items/batch_date={batch_date}"
 silver_payments_path = f"{silver_root_path}/payments/batch_date={batch_date}"
-reject_customers_path = f"{reject_root_path}/customers"
+reject_customers_path = f"{reject_root_path}/customers/batch_date={batch_date}"
+reject_orders_path = f"{reject_root_path}/orders/batch_date={batch_date}"
 fx_rates_path = f"{raw_root_path}/currency/batch_date={batch_date}/fx_rates.csv"
 
 print(f"Batch Date            : {batch_date}")
@@ -186,7 +187,13 @@ null_counts.show(truncate=False)
 
 
 # Remove rows with mandatory nulls
-orders_df = orders_df.dropna(subset=mandatory_columns)
+missing_required = F.lit(False)
+for column in mandatory_columns:
+    missing_required = missing_required | F.col(column).isNull()
+reject_orders_df = orders_df.filter(missing_required).withColumn(
+    "reject_reason", F.lit("Null Mandatory Order Field")
+)
+orders_df = orders_df.filter(~missing_required)
 
 final_count = orders_df.count()
 
@@ -237,8 +244,11 @@ customers_df = customers_df.withColumn(
 email_pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
 
 valid_customers_df = customers_df.filter(F.col("email").rlike(email_pattern))
-reject_customers_df = customers_df.filter(~F.col("email").rlike(email_pattern)).withColumn(
-    "reject_reason", F.lit("Invalid Email")
+reject_customers_df = customers_df.filter(
+    F.col("email").isNull() | ~F.col("email").rlike(email_pattern)
+).withColumn(
+    "reject_reason",
+    F.when(F.col("email").isNull(), F.lit("Null Email")).otherwise(F.lit("Invalid Email"))
 )
 
 print(f"Valid Customers    : {valid_customers_df.count()}")
@@ -323,6 +333,7 @@ valid_customers_df.write.mode("overwrite").parquet(silver_customers_path)
 print("Silver Customers written successfully.")
 
 reject_customers_df.write.mode("overwrite").parquet(reject_customers_path)
+reject_orders_df.write.mode("overwrite").parquet(reject_orders_path)
 
 print("Rejected Customers written successfully.")
 

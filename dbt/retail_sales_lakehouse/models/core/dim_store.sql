@@ -15,7 +15,7 @@ with latest_store as (
 )
 
 select
-    store_id as store_key,
+    md5('retail:store:' || cast(store_id as varchar)) as store_key,
     store_id,
     store_name,
     store_type,

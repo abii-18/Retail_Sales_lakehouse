@@ -44,30 +44,34 @@ def download_silver_files(batch_date):
 
     for dataset in DATASETS:
         prefix = f"archive/l2/{dataset}/batch_date={batch_date}/"
-        response = s3.list_objects_v2(Bucket=RAW_BUCKET_NAME, Prefix=prefix)
-        parquet_key = None
-
-        for obj in response.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith(".parquet"):
-                parquet_key = key
-                break
-
-        if parquet_key is None:
+        dataset_dir = os.path.join(temp_dir, dataset)
+        os.makedirs(dataset_dir, exist_ok=True)
+        part_count = 0
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=RAW_BUCKET_NAME, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith(".parquet"):
+                    continue
+                local_file = os.path.join(dataset_dir, f"part-{part_count:05d}.parquet")
+                s3.download_file(RAW_BUCKET_NAME, key, local_file)
+                local_files.append((dataset, local_file))
+                part_count += 1
+        if part_count == 0:
+            shutil.rmtree(temp_dir, ignore_errors=True)
             raise FileNotFoundError(f"No parquet file found for {dataset} batch {batch_date}")
-
-        local_file = os.path.join(temp_dir, f"{dataset}.parquet")
-        s3.download_file(RAW_BUCKET_NAME, parquet_key, local_file)
-        local_files.append((dataset, local_file))
 
     return local_files
 
 
 def upload_to_internal_stage(connection, local_files, batch_date):
     with connection.cursor() as cursor:
+        cleared_datasets = set()
         for dataset, local_file in local_files:
             stage_path = f"@{STAGE_NAME}/{dataset}/batch_date={batch_date}/"
-            cursor.execute(f"REMOVE {stage_path};")
+            if dataset not in cleared_datasets:
+                cursor.execute(f"REMOVE {stage_path};")
+                cleared_datasets.add(dataset)
             cursor.execute(
                 f"""
 PUT file://{local_file}
@@ -107,7 +111,7 @@ def main(batch_date):
 
     try:
         local_files = download_silver_files(batch_date)
-        temp_dir = os.path.dirname(local_files[0][1])
+        temp_dir = os.path.dirname(os.path.dirname(local_files[0][1]))
         upload_to_internal_stage(connection, local_files, batch_date)
         print("All datasets uploaded successfully.")
 

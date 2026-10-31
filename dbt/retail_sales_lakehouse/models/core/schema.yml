@@ -66,6 +66,7 @@ models:
       - name: customer_key
         description: Foreign key to dim_customer.
         tests:
+          - not_null
           - relationships:
               to: ref('dim_customer')
               field: customer_key
@@ -73,6 +74,7 @@ models:
       - name: product_key
         description: Foreign key to dim_product.
         tests:
+          - not_null
           - relationships:
               to: ref('dim_product')
               field: product_key
@@ -80,6 +82,7 @@ models:
       - name: store_key
         description: Foreign key to dim_store.
         tests:
+          - not_null
           - relationships:
               to: ref('dim_store')
               field: store_key
