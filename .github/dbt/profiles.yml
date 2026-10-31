@@ -1,0 +1,13 @@
+retail_sales_lakehouse:
+  target: ci
+  outputs:
+    ci:
+      type: snowflake
+      account: ci-placeholder
+      user: ci-placeholder
+      password: ci-placeholder
+      role: CI
+      database: RETAIL_LAKEHOUSE
+      warehouse: CI
+      schema: CI
+      threads: 1

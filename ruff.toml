@@ -1,0 +1,3 @@
+# Catch syntax errors, undefined names and unused imports without reformatting the project.
+[lint]
+select = ["E9", "F"]
