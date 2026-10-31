@@ -8,24 +8,9 @@ A daily retail pipeline using PostgreSQL, a Currency API, Airflow, S3, AWS Glue,
 
 ## How to run it
 
-This project needs AWS and Snowflake resources; Docker runs PostgreSQL, Airflow and dbt locally.
-
-1. Clone this repository. In [docker/docker-compose.yml](docker/docker-compose.yml), replace the machine-specific AWS/dbt mounts and bucket name. Provide the listed `SNOWFLAKE_*` environment variables and a Snowflake dbt profile named in [dbt_project.yml](dbt/retail_sales_lakehouse/dbt_project.yml).
-2. Start the source database, apply [source_system/schema.sql](source_system/schema.sql), and populate the retail tables. Also create an `etl_watermark` table with `pipeline_name`, `last_watermark` and `updated_at`, seeding an `orders_pipeline` row with your initial timestamp; this setup is not included in the source DDL.
-3. Create the S3 bucket and seven Glue jobs using [glue/](glue/). Package `common.bronze` for the Bronze jobs. Configure `RAW_ROOT_PATH`, `BRONZE_ROOT_PATH`, `BATCH_DATE`, plus Silver's `SILVER_ROOT_PATH` and `REJECT_ROOT_PATH`. Use `raw` and `archive/l2` prefixes for raw and Silver data to match the loader. Grant AWS access and configure Airflow's AWS connection and `snowflake_default`.
-4. Apply the setup SQL in [snowflake/sql/](snowflake/sql/) (database, schemas, warehouse, file format, stage and staging tables). Build and start Docker services from the repository root:
-
-```bash
-docker build -t retail-dbt docker/dbt
-docker compose -f docker/docker-compose.yml up airflow-init
-docker compose -f docker/docker-compose.yml up -d postgres airflow-scheduler airflow-webserver dbt
-```
-
-Open Airflow at `http://localhost:8080` (demo login: `admin/admin`) and trigger `daily_retail_pipeline`. Align the run's logical date, extraction date and Bronze job `BATCH_DATE`; the DAG passes `{{ ds }}` only to Silver and the warehouse loader. The final task runs `dbt deps && dbt run && dbt test`. To rerun modeling/tests separately:
-
-```bash
-docker exec retail-dbt bash -c "cd /usr/app/retail_sales_lakehouse && dbt run && dbt test"
-```
+1. Configure AWS/S3, the seven [Glue jobs](glue/), Snowflake resources and credentials, and the mounts in [Docker Compose](docker/docker-compose.yml).
+2. Apply [source SQL](source_system/schema.sql) and [Snowflake SQL](snowflake/sql/), populate source data, seed the orders watermark, then build `retail-dbt` and start the Compose services.
+3. Open Airflow at `http://localhost:8080`, align the batch dates and trigger `daily_retail_pipeline`; the final task runs `dbt deps && dbt run && dbt test`.
 
 ## Idempotency: rerunning a batch date
 
