@@ -10,7 +10,7 @@ A daily retail pipeline using PostgreSQL, a Currency API, Airflow, S3, AWS Glue,
 
 1. Configure AWS/S3, the seven [Glue jobs](glue/), Snowflake resources and credentials, and the mounts in [Docker Compose](docker/docker-compose.yml).
 2. Apply [source SQL](source_system/schema.sql) and [Snowflake SQL](snowflake/sql/), populate source data, seed the orders watermark, then build `retail-dbt` and start the Compose services.
-3. Open Airflow at `http://localhost:8080`, align the batch dates and trigger `daily_retail_pipeline`; the final task runs `dbt deps && dbt run && dbt test`.
+3. Open Airflow at `http://localhost:8080`, align the batch dates and trigger `daily_retail_pipeline`; the final task runs `dbt deps && dbt build`.
 
 ## Idempotency: rerunning a batch date
 
@@ -42,9 +42,11 @@ See [core models](dbt/retail_sales_lakehouse/models/core/). Customer/product/sto
 | Duplicate entity IDs | Silver window dedup keeps the latest ingestion; timestamp ties have no deterministic tie-breaker. |
 | Mandatory order fields or lineage fields are null | Parquet at `REJECT_ROOT_PATH/orders/batch_date=YYYY-MM-DD`, with `Null Mandatory Order Field`; counts are logged. |
 | Customer email fails the regex | Parquet at `REJECT_ROOT_PATH/customers/batch_date=YYYY-MM-DD`, with `Invalid Email` or `Null Email`; reruns replace only that batch. |
-| dbt model checks | [schema.yml](dbt/retail_sales_lakehouse/models/core/schema.yml) tests dimension keys and `order_item_id` for uniqueness/non-nullness, plus non-null customer/product/store fact keys and their relationships. SQL tests check order-item coverage and missing parent orders. Failures stop the final task; rows are not quarantined. |
+| dbt model checks | [schema.yml](dbt/retail_sales_lakehouse/models/core/schema.yml) tests dimension keys and `order_item_id` for uniqueness/non-nullness, plus non-null customer/product/store fact keys and their relationships. SQL tests check order-item coverage and missing parent orders. Failures block downstream models during `dbt build`; rows are not quarantined. |
 
 Known rejected orders cascade to their order items at `REJECT_ROOT_PATH/order_items/batch_date=YYYY-MM-DD` with reason `Rejected Parent Order`. This keeps expected bad input out of sales without failing the batch. Unknown parents and missing dimensions remain errors: left joins preserve the evidence and dbt tests block downstream models. Coverage tests compare the accepted Silver items loaded into staging with the fact, excluding quarantined items.
+
+`dbt build` runs models and tests in dependency order; an upstream error skips dependent Gold models. It does not atomically publish the warehouse: the fact may already be replaced when its test fails, so consumer isolation needs a separate validated schema and promotion step.
 
 ## Screenshots
 
