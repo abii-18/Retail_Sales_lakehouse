@@ -67,10 +67,3 @@ Known rejected orders cascade to their order items at `REJECT_ROOT_PATH/order_it
 
 </details>
 
-## Limitations and trade-offs
-
-- Watermarks use order time rather than update time: late/backdated orders and updates to older orders can be missed. Advancing before downstream success leaves a recovery gap.
-- Extraction/landing use wall-clock dates while downstream tasks use Airflow's logical date. Historical backfills need manual alignment.
-- Silver scans Bronze history; full extracts and table rebuilds favor simplicity over scale. The warehouse loader paginates S3 listings and uploads every Parquet part.
-- Rejects are retained per batch; reruns overwrite that batch. Missing FX matches remain null. Fact left joins retain items with missing orders/dimensions, and dbt tests fail on missing references. FX is enriched in Silver; fact amounts remain in source currency.
-- FX API failures fall back to cached rates with a `DEGRADED` status. Cloud provisioning, sample data and credential/profile setup remain manual.
